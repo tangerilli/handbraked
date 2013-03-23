@@ -82,6 +82,7 @@ func HandleFile(file string) {
         fmt.Println(output)
     }
     fmt.Println("Finished " + file)
+    os.Remove(file)
 }
 
 func main() {
