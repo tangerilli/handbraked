@@ -14,7 +14,6 @@ import ("fmt"
         "strings"
 )
 
-const outputPath = "/tmp"
 var movieExtensions []string = []string{"m4v", "avi", "mpg", "mpeg", "mkv", "mov"}
 
 func FindFileTypes(path string, extensions []string) []string {
@@ -30,16 +29,17 @@ func FindFileTypes(path string, extensions []string) []string {
 }
 
 func usage() {
-    fmt.Println("usage: handbraked [path to watch]")
+    fmt.Println("usage: handbraked [path to watch] [output path]")
     flag.PrintDefaults()
     os.Exit(1)
 }
 
-func processFile(path string, c chan float64) {
+func processFile(path string, outputPath string, c chan float64) {
     defer close(c)
 
     fmt.Println("Processing " + path)
     outputFile := filepath.Join(outputPath, filepath.Base(path))
+    outputFile = outputFile[:len(outputFile)-3] + "m4v  "
     cmd := exec.Command("HandBrakeCLI", "-i", path, "--preset=iPad", "-o", outputFile)
     stdout, err := cmd.StdoutPipe()
     if err != nil {
@@ -75,24 +75,28 @@ func processFile(path string, c chan float64) {
     }
 }
 
-func HandleFile(file string) {
+func HandleFile(file string, outputPath string, deleteOnCompletion bool) {
     c := make(chan float64)
-    go processFile(file, c)
+    go processFile(file, outputPath, c)
     for output := range c {
         fmt.Println(output)
     }
     fmt.Println("Finished " + file)
-    os.Remove(file)
+    if deleteOnCompletion {
+        os.Remove(file)
+    }
 }
 
 func main() {
     flag.Usage = usage
+    var deleteOnCompletion = flag.Bool("delete", true, "Delete files after processing")
     flag.Parse()
     args := flag.Args()
-    if len(args) < 1 {
-        fmt.Println("Path is missing")
-        os.Exit(1)
+    if len(args) < 2 {
+        usage()
     }
+    inputPath := args[0]
+    outputPath := args[1]
 
     // Sorted so it can be searched later
     sort.Strings(movieExtensions)
@@ -115,7 +119,7 @@ func main() {
                 ext := strings.ToLower(filepath.Ext(ev.Name)[1:])
                 i := sort.SearchStrings(movieExtensions, ext)
                 if i < len(movieExtensions) && movieExtensions[i] == ext {
-                    HandleFile(ev.Name)
+                    HandleFile(ev.Name, outputPath, *deleteOnCompletion)
                 }
             case err := <-watcher.Error:
                 log.Println("error:", err)
@@ -124,11 +128,11 @@ func main() {
     }()
 
     // Iterate through and process any existing movie files
-    for _, file := range FindFileTypes(args[0], movieExtensions) {
-        HandleFile(file)
+    for _, file := range FindFileTypes(inputPath, movieExtensions) {
+        HandleFile(file, outputPath, *deleteOnCompletion)
     }
 
-    err = watcher.Watch(args[0])
+    err = watcher.Watch(inputPath)
     if err != nil {
         log.Fatal(err)
     }
