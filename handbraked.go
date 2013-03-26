@@ -39,7 +39,7 @@ func processFile(path string, outputPath string, c chan float64) {
 
     fmt.Println("Processing " + path)
     outputFile := filepath.Join(outputPath, filepath.Base(path))
-    outputFile = outputFile[:len(outputFile)-3] + "m4v  "
+    outputFile = outputFile[:len(outputFile)-3] + "m4v"
     cmd := exec.Command("HandBrakeCLI", "-i", path, "--preset=iPad", "-o", outputFile)
     stdout, err := cmd.StdoutPipe()
     if err != nil {
