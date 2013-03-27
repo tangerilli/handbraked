@@ -38,9 +38,11 @@ func processFile(path string, outputPath string, c chan float64) {
     defer close(c)
 
     fmt.Println("Processing " + path)
-    outputFile := filepath.Join(outputPath, filepath.Base(path))
-    outputFile = outputFile[:len(outputFile)-3] + "m4v"
-    cmd := exec.Command("HandBrakeCLI", "-i", path, "--preset=iPad", "-o", outputFile)
+    newFileName := filepath.Base(path)
+    newFileName = newFileName[:len(newFileName)-3] + "m4v"
+    outputFile := filepath.Join(outputPath, newFileName)
+    tmpOutputFile := filepath.Join("/tmp", newFileName)
+    cmd := exec.Command("HandBrakeCLI", "-i", path, "--preset=iPad", "-o", tmpOutputFile)
     stdout, err := cmd.StdoutPipe()
     if err != nil {
         fmt.Println("Error opening stdout")
@@ -73,6 +75,7 @@ func processFile(path string, outputPath string, c chan float64) {
         fmt.Println("Error waiting")
         return
     }
+    os.Rename(tmpOutputFile, outputFile)
 }
 
 func HandleFile(file string, outputPath string, deleteOnCompletion bool) {
