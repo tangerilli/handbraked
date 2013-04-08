@@ -9,9 +9,9 @@ import ("fmt"
         "strconv"
         "github.com/howeyc/fsnotify"
         "log"
-        "time"
         "sort"
         "strings"
+        "handbraked/ui"
 )
 
 var movieExtensions []string = []string{"m4v", "avi", "mpg", "mpeg", "mkv", "mov"}
@@ -29,7 +29,7 @@ func FindFileTypes(path string, extensions []string) []string {
 }
 
 func usage() {
-    fmt.Println("usage: handbraked [path to watch] [output path]")
+    fmt.Println("usage: handbraked [path to watch] [output path] [movie file path]")
     flag.PrintDefaults()
     os.Exit(1)
 }
@@ -95,11 +95,12 @@ func main() {
     var deleteOnCompletion = flag.Bool("delete", true, "Delete files after processing")
     flag.Parse()
     args := flag.Args()
-    if len(args) < 2 {
+    if len(args) < 3 {
         usage()
     }
     inputPath := args[0]
     outputPath := args[1]
+    moviePath := args[2]
 
     // Sorted so it can be searched later
     sort.Strings(movieExtensions)
@@ -139,10 +140,8 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    log.Println("Watching ", args[0])
-    for {
-        time.Sleep(10 * time.Second)
-    }
+    log.Println("Watching ", inputPath)
+    ui.Run(5000, moviePath, inputPath, movieExtensions)
 
     watcher.Close()
 }
