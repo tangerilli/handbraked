@@ -9,7 +9,7 @@ import ("net/http"
         "strings"
         "sort"
         "encoding/json"
-        "handbraked/common"
+        "github.com/tangerilli/handbraked/common"
         "code.google.com/p/go.net/websocket"
 )
 
