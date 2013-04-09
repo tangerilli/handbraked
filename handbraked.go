@@ -12,21 +12,12 @@ import ("fmt"
         "sort"
         "strings"
         "handbraked/ui"
+        "handbraked/common"
+        "encoding/json"
+        "time"
 )
 
 var movieExtensions []string = []string{"m4v", "avi", "mpg", "mpeg", "mkv", "mov"}
-
-func FindFileTypes(path string, extensions []string) []string {
-    var results []string
-    for _, pattern := range extensions {
-        r, err := filepath.Glob(filepath.Join(path, "*." + pattern))
-        if err != nil {
-            continue
-        }
-        results = append(results, r...)
-    }
-    return results
-}
 
 func usage() {
     fmt.Println("usage: handbraked [path to watch] [output path] [movie file path]")
@@ -78,11 +69,30 @@ func processFile(path string, outputPath string, c chan float64) {
     os.Rename(tmpOutputFile, outputFile)
 }
 
+type StatusUpdate struct {
+    Name string
+    Progress float64
+}
+
 func HandleFile(file string, outputPath string, deleteOnCompletion bool) {
     c := make(chan float64)
     go processFile(file, outputPath, c)
+    status := StatusUpdate{filepath.Base(file), 0}
+    last := time.Now().Unix()
     for output := range c {
         fmt.Println(output)
+        now := time.Now().Unix()
+        if now - last < 2 {
+            continue
+        }
+        last = time.Now().Unix()
+        
+        status.Progress = output
+        j, err := json.Marshal(status)
+        if err != nil {
+            continue
+        }
+        ui.MessageHub.Broadcast <- string(j)
     }
     fmt.Println("Finished " + file)
     if deleteOnCompletion {
@@ -114,7 +124,6 @@ func main() {
         for {
             select {
             case ev := <-watcher.Event:
-                log.Println("event:", ev)
                 if !ev.IsCreate() {
                     continue
                 }
@@ -131,8 +140,10 @@ func main() {
         }
     }()
 
+    go ui.Run(5000, moviePath, inputPath, movieExtensions)
+
     // Iterate through and process any existing movie files
-    for _, file := range FindFileTypes(inputPath, movieExtensions) {
+    for _, file := range common.FindFileTypes(inputPath, movieExtensions) {
         HandleFile(file, outputPath, *deleteOnCompletion)
     }
 
@@ -141,7 +152,8 @@ func main() {
         log.Fatal(err)
     }
     log.Println("Watching ", inputPath)
-    ui.Run(5000, moviePath, inputPath, movieExtensions)
-
+    for {
+        time.Sleep(10000)
+    }
     watcher.Close()
 }

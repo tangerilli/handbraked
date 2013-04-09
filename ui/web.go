@@ -9,6 +9,8 @@ import ("net/http"
         "strings"
         "sort"
         "encoding/json"
+        "handbraked/common"
+        "code.google.com/p/go.net/websocket"
 )
 
 type Handler struct {
@@ -100,32 +102,101 @@ type queueRequest struct {
 type QueueRequestHandler struct {
     sourcePath string
     watcherPath string
+    extensions []string
+}
+
+type QueueItem struct {
+    Name string
 }
 
 func (p QueueRequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    decoder := json.NewDecoder(r.Body)
-    var request queueRequest
-    err := decoder.Decode(&request)
-    if err != nil {
-        fmt.Println(err)
-        panic(1)
+    if r.Method == "POST" {
+        decoder := json.NewDecoder(r.Body)
+        var request queueRequest
+        err := decoder.Decode(&request)
+        if err != nil {
+            fmt.Println(err)
+            panic(1)
+        }
+        path := filepath.Join(p.sourcePath, request.Path)
+        fmt.Println("Need to symlink " + path + " to " + p.watcherPath)
+        err = os.Symlink(path, filepath.Join(p.watcherPath, filepath.Base(path)))
+        if err != nil {
+            fmt.Println("Error!")
+        }
     }
-    path := filepath.Join(p.sourcePath, request.Path)
-    fmt.Println("Need to symlink " + path + " to " + p.watcherPath)
-    err = os.Symlink(path, filepath.Join(p.watcherPath, filepath.Base(path)))
-    if err != nil {
-        fmt.Println("Error!")
+
+    if r.Method == "GET" {
+        var items []QueueItem
+        for _, file := range common.FindFileTypes(p.watcherPath, p.extensions) {
+            items = append(items, QueueItem{filepath.Base(file)})
+        }
+        encoder := json.NewEncoder(w)
+        encoder.Encode(items)
     }
 }
 
+type connection struct {
+    // The websocket connection.
+    ws *websocket.Conn
+
+    // Buffered channel of outbound messages.
+    send chan string
+}
+
+func (c *connection) reader() {
+    for {
+        var message string
+        err := websocket.Message.Receive(c.ws, &message)
+        if err != nil {
+            break
+        }
+        MessageHub.Broadcast <- message
+    }
+    c.ws.Close()
+}
+
+func (c *connection) writer() {
+    for message := range c.send {
+        err := websocket.Message.Send(c.ws, message)
+        if err != nil {
+            break
+        }
+    }
+    c.ws.Close()
+}
+
+func statusHandler(ws *websocket.Conn) {
+    c := &connection{send: make(chan string, 256), ws: ws}
+    MessageHub.register <- c
+    defer func() { MessageHub.unregister <- c }()
+    go c.writer()
+    c.reader()
+}
+
+// For status:
+//  - Requests to /api/queue should return a JSON list of files in the queue directory
+//  - Requests to /api/queue/status should open a websocket connection which sends the
+//    filename currently being processed, followed by completion percentages, followed by
+//    the next filename and so on
+// The webpage should hit /api/queue to create the list of files to be processed (as a collection of QueueItem's)
+// It can refresh the collection every 30s or so, or whenever something is queued
+// There should be a collection view which renders the collection as a series of progress bars
+// A websocket should be setup from /api/queue which finds the appropriate collection element and updates the model progress variable
+// which causes a re-render of the progress bar (which implies that each queueitem should have its own subviews) 
+
 func Run(port int, filePath string, inputPath string, extensions []string) {
+    // start the websocket hub
+    go MessageHub.run()
+
     handler := Handler{}
     http.Handle("/", handler)
     http.HandleFunc("/static/", staticHandler)
     sourceHandler := SourceFilesHandler{filePath, extensions}
     http.Handle("/api/files/source", sourceHandler)
-    queueHandler := QueueRequestHandler{filePath, inputPath}
-    http.Handle("/api/files/queue", queueHandler)
+    queueHandler := QueueRequestHandler{filePath, inputPath, extensions}
+    http.Handle("/api/queue", queueHandler)
+    http.Handle("/api/queue/status", websocket.Handler(statusHandler))
 
     listenAddr := ":" + strconv.FormatInt(int64(port), 10)
     fmt.Println("Starting webserver on ", listenAddr)

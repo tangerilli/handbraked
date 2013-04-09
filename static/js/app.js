@@ -44,7 +44,56 @@ var DirectoryView = Backbone.View.extend({
         this.childViews[targetName].render();
         return false;
     }
-})
+});
+
+var QueueItem = Backbone.Model.extend({
+    idAttribute: "Name",
+    defaults: {
+        progress: 0
+    }
+});
+
+var Queue = Backbone.Collection.extend({
+    model: QueueItem,
+    url: "/api/queue"
+});
+
+var QueueItemView = Backbone.View.extend({
+    initialize: function() {
+        this.template = Handlebars.compile($('#queue-item-template').html());
+        this.model.on("change:progress", this.updateProgress, this);
+    },
+    render: function() {
+        var html = this.template(this.model.toJSON());
+        this.$el.html(html);
+        return this;
+    },
+    updateProgress: function() {
+        this.$(".bar").css("width", this.model.get('progress') + "%")
+    }
+});
+
+var QueueView = Backbone.View.extend({
+    initialize: function() {
+        this.collection.on("change add remove", this.render, this);
+    },
+    render: function() {
+        this.$el.html('');
+        if(this.collection.length == 0) {
+            this.$el.html("<li>Nothing queued</li>");
+            return this;
+        }
+
+        this.collection.each(function(item) {
+            var view = new QueueItemView({
+                model: item,
+                tagName: "li"
+            });
+            this.$el.append(view.render().el);
+        }, this);
+        return this;
+    }
+});
 
 var HandbrakeRouter = Backbone.Router.extend({
     routes: {
@@ -59,21 +108,55 @@ var HandbrakeRouter = Backbone.Router.extend({
             });
             view.render();
         });
-        $("button#queue").on("click", this.queueFiles);
+
+        var router = this;
+
+        $("button#queue").on("click", function() { router.queueFiles()});
+
+        this.queue = new Queue;
+        this.queue.fetch({
+            success: function() {
+                var view = new QueueView({
+                    collection: router.queue,
+                    el: $("ul.queue")
+                });
+                view.render();
+            }
+        });
+
+        window.setInterval(function() {
+            router.queue.fetch();
+        }, 30000);
+
+        if (window["WebSocket"]) {
+            conn = new WebSocket("ws://" + window.location.host + "/api/queue/status");
+            conn.onclose = function(evt) {
+                console.log("Connection closed.")
+            }
+            conn.onmessage = function(evt) {
+                var status = JSON.parse(evt.data);
+                var item = router.queue.get(status.Name);
+                if(!item) return;
+                item.set({progress:status.Progress.toFixed(2)});
+            }
+        } else {
+            console.debug("websockets not supported");
+        }
     },
     queueFiles: function() {
-        console.debug("Queue files");
+        var router = this;
         $("li.file").each(function(idx, el) {
             var checked = $("input", el).prop('checked');
             if(!checked) return;
             var path = $(el).attr('data-path');
             $.ajax({
                 type: "POST", 
-                url: "/api/files/queue", 
+                url: "/api/queue", 
                 data: '{"Path":"' + path + '"}', 
                 contentType: "application/json",
                 success: function() {
                     console.debug("Queued " + path);
+                    router.queue.fetch();
                 }
             });
         });
