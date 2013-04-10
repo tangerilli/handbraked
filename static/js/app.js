@@ -25,10 +25,14 @@ var DirectoryView = Backbone.View.extend({
     },
     clickDirectory: function(evt) {
         var targetName = $(evt.currentTarget).attr('data-target');
+
         if(targetName == ".." && this.parent) {
+            this.undelegateEvents();
             this.parent.render();
+            this.parent.delegateEvents();
             return false;
         }
+
         var subdir = _.find(this.model.get('Children'), function(dir) {
             return dir.Name == targetName
         }, this);
@@ -41,7 +45,9 @@ var DirectoryView = Backbone.View.extend({
                 parent: this
             });
         }
+        this.undelegateEvents();
         this.childViews[targetName].render();
+        this.childViews[targetName].delegateEvents();
         return false;
     }
 });
