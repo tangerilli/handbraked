@@ -129,7 +129,11 @@ func main() {
                 }
                 log.Println("event:", ev)
 
-                ext := strings.ToLower(filepath.Ext(ev.Name)[1:])
+                ext := strings.ToLower(filepath.Ext(ev.Name))
+                if(ext == "") {
+                    continue
+                }
+                ext = ext[1:]
                 i := sort.SearchStrings(movieExtensions, ext)
                 if i < len(movieExtensions) && movieExtensions[i] == ext {
                     HandleFile(ev.Name, outputPath, *deleteOnCompletion)
