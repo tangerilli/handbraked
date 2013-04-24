@@ -153,7 +153,7 @@ func main() {
     }
     log.Println("Watching ", inputPath)
     for {
-        time.Sleep(10000)
+        time.Sleep(10000 * time.Millisecond)
     }
     watcher.Close()
 }
