@@ -7,6 +7,7 @@ import (
 	"github.com/howeyc/fsnotify"
 	"github.com/tangerilli/handbraked/common"
 	"github.com/tangerilli/handbraked/ui"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -24,6 +25,30 @@ func usage() {
 	fmt.Println("usage: handbraked [path to watch] [output path] [movie file path]")
 	flag.PrintDefaults()
 	os.Exit(1)
+}
+
+func move(oldPath string, newPath string) error {
+	oldFile, err := os.Open(oldPath)
+	if err != nil {
+		return err
+	}
+	defer oldFile.Close()
+
+	newFile, err := os.Create(newPath)
+	if err != nil {
+		return err
+	}
+	defer newFile.Close()
+
+	_, err = io.Copy(oldFile, newFile)
+	if err != nil {
+		return err
+	}
+	newFile.Sync()
+
+	os.Remove(oldPath)
+
+	return nil
 }
 
 func processFile(path string, outputPath string, c chan float64) {
@@ -71,6 +96,11 @@ func processFile(path string, outputPath string, c chan float64) {
 	err = os.Rename(tmpOutputFile, outputFile)
 	if err != nil {
 		fmt.Println("Error renaming file: ", err.Error())
+		fmt.Println("Copying file instead")
+		err = move(tmpOutputFile, outputFile)
+		if err != nil {
+			fmt.Println("Error copying file: ", err.Error())
+		}
 	}
 }
 
